@@ -382,7 +382,7 @@ def fetch_warrants_for_stock(stock_code, min_days=120, max_outstanding=70, top_n
                 {"field": "FLD_WAR_TYPE", "values": ["1"]},
                 {"field": "FLD_PERIOD", "left": str(min_days)},
                 {"field": "FLD_OUT_VOL_RATE", "right": str(max_outstanding)},
-                {"field": "FLD_IN_OUT_DECIMAL", "left": "-5", "right": "20"},
+                {"field": "FLD_IN_OUT_DECIMAL", "left": "-20", "right": "5"},
                 {"field": "FLD_ISSUE_AGT_ID", "values": list(GOOD_ISSUERS.keys())},
             ],
             "orderby": {"field": "FLD_LEVERAGE", "sort": "DESC"}
