@@ -74,19 +74,133 @@
             <!-- Back Button -->
             <button class="back-btn" onclick="goBack()">重新輸入</button>
         </section>
+
+        <!-- Floating Selection Bar -->
+        <div class="selection-bar" id="selectionBar" style="display:none">
+            <span class="selection-count" id="selectionCount">已選 0 檔</span>
+            <button class="selection-btn" onclick="exportSelected()">輸出代號</button>
+            <button class="selection-btn secondary" onclick="clearSelection()">清除</button>
+        </div>
+
+        <!-- Export Modal -->
+        <div class="modal-overlay" id="exportModal" style="display:none" onclick="closeModal(event)">
+            <div class="modal">
+                <h3>自選清單</h3>
+                <p class="modal-hint">點擊複製，貼到下單系統</p>
+                <div class="export-list" id="exportList"></div>
+                <button class="modal-copy-btn" onclick="copyAll()">一鍵複製全部</button>
+                <button class="modal-close-btn" onclick="document.getElementById('exportModal').style.display='none'">關閉</button>
+            </div>
+        </div>
     </div>
 
     <script>
+    // Selection state
+    const selected = new Map(); // code -> {type: 'stock'|'warrant', name, code}
+
+    function toggleSelect(code, name, type) {
+        if (selected.has(code)) {
+            selected.delete(code);
+        } else {
+            selected.set(code, {type, name, code});
+        }
+        updateSelectionUI();
+    }
+
+    function updateSelectionUI() {
+        const bar = document.getElementById('selectionBar');
+        const count = selected.size;
+        if (count > 0) {
+            bar.style.display = 'flex';
+            document.getElementById('selectionCount').textContent = `已選 ${count} 檔`;
+        } else {
+            bar.style.display = 'none';
+        }
+        // Update checkbox visuals
+        document.querySelectorAll('.select-check').forEach(el => {
+            const code = el.dataset.code;
+            el.classList.toggle('checked', selected.has(code));
+        });
+    }
+
+    function clearSelection() {
+        selected.clear();
+        updateSelectionUI();
+    }
+
+    function exportSelected() {
+        if (selected.size === 0) return;
+        const modal = document.getElementById('exportModal');
+        const list = document.getElementById('exportList');
+
+        const stocks = [];
+        const warrants = [];
+        selected.forEach(item => {
+            if (item.type === 'stock') stocks.push(item);
+            else warrants.push(item);
+        });
+
+        let html = '';
+        if (stocks.length) {
+            html += '<div class="export-group"><div class="export-group-label">股票</div>';
+            stocks.forEach((s, i) => {
+                html += `<div class="export-row" onclick="copyOne('${s.code}', this)">
+                    <span class="export-num">${i + 1}.</span>
+                    <span class="export-code">${s.code}</span>
+                    <span class="export-name">${s.name}</span>
+                    <span class="export-copy-hint">tap 複製</span>
+                </div>`;
+            });
+            html += '</div>';
+        }
+        if (warrants.length) {
+            html += '<div class="export-group"><div class="export-group-label">權證</div>';
+            warrants.forEach((w, i) => {
+                html += `<div class="export-row" onclick="copyOne('${w.code}', this)">
+                    <span class="export-num">${i + 1}.</span>
+                    <span class="export-code">${w.code}</span>
+                    <span class="export-name">${w.name}</span>
+                    <span class="export-copy-hint">tap 複製</span>
+                </div>`;
+            });
+            html += '</div>';
+        }
+        list.innerHTML = html;
+        modal.style.display = 'flex';
+    }
+
+    function copyOne(code, el) {
+        navigator.clipboard.writeText(code).then(() => {
+            el.classList.add('copied');
+            setTimeout(() => el.classList.remove('copied'), 1000);
+        });
+    }
+
+    function copyAll() {
+        const codes = [];
+        selected.forEach(item => codes.push(item.code));
+        navigator.clipboard.writeText(codes.join('\n')).then(() => {
+            const btn = document.querySelector('.modal-copy-btn');
+            btn.textContent = '已複製！';
+            setTimeout(() => btn.textContent = '一鍵複製全部', 1500);
+        });
+    }
+
+    function closeModal(e) {
+        if (e.target === e.currentTarget) {
+            document.getElementById('exportModal').style.display = 'none';
+        }
+    }
+
     async function runAnalysis() {
         const input = document.getElementById('inputText').value.trim();
         if (!input) return alert('請輸入明牌資料');
 
-        // Show loading
         document.getElementById('inputSection').style.display = 'none';
         document.getElementById('resultsSection').style.display = 'none';
         document.getElementById('loadingSection').style.display = 'block';
+        clearSelection();
 
-        // Animate progress bar
         const fill = document.getElementById('progressFill');
         const loadingText = document.getElementById('loadingText');
         let progress = 0;
@@ -138,6 +252,8 @@
         document.getElementById('inputSection').style.display = 'block';
         document.getElementById('loadingSection').style.display = 'none';
         document.getElementById('resultsSection').style.display = 'none';
+        document.getElementById('selectionBar').style.display = 'none';
+        clearSelection();
     }
 
     function scoreColor(score) {
@@ -238,7 +354,8 @@
 
                 dayHtml += `
                     <div class="stock-item ${hasWarrants ? 'has-warrants' : 'no-warrants'}">
-                        <div class="stock-header">
+                        <div class="stock-header" onclick="toggleSelect('${s.code}', '${s.name}', 'stock')">
+                            <div class="select-check" data-code="${s.code}"></div>
                             <div class="stock-score ${scoreClass}">${s.stock_score}</div>
                             <div class="stock-info">
                                 <div class="stock-title">
@@ -266,9 +383,12 @@
                         if (w.outstanding !== null && w.outstanding !== undefined) metrics.push(`流通 ${w.outstanding.toFixed(0)}%`);
 
                         const wScoreColor = scoreColor(w.score);
+                        // Escape name for JS onclick
+                        const wNameSafe = w.name.replace(/'/g, "\\'");
 
                         dayHtml += `
-                            <div class="warrant-row">
+                            <div class="warrant-row" onclick="toggleSelect('${w.code}', '${wNameSafe}', 'warrant')">
+                                <div class="select-check" data-code="${w.code}"></div>
                                 <div class="warrant-score" style="background:${wScoreColor}">${w.score}</div>
                                 <div class="warrant-info">
                                     <div class="warrant-title">
