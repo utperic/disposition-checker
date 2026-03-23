@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>處置股篩選器</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>處置股篩選器</h1>
+            <p class="subtitle">處置股比對 · 權證篩選 · 產業動能排序</p>
+        </header>
+
+        <!-- Input Section -->
+        <section class="input-section" id="inputSection">
+            <div class="card">
+                <h2>輸入明牌</h2>
+                <p class="hint">格式：<code>周二(3/24): 榮創、威剛、鈺創</code>（每行一天）</p>
+                <textarea id="inputText" placeholder="周二(3/24): 榮創、威剛、鈺創&#10;周三(3/25): 華宏、景碩、晶豪科&#10;周四(3/26): 晟德、創見"></textarea>
+                <button id="analyzeBtn" onclick="runAnalysis()">
+                    <span class="btn-text">開始分析</span>
+                    <span class="btn-loading" style="display:none">
+                        <span class="spinner"></span>分析中...約需 30~60 秒
+                    </span>
+                </button>
+            </div>
+        </section>
+
+        <!-- Loading -->
+        <section class="loading-section" id="loadingSection" style="display:none">
+            <div class="card loading-card">
+                <div class="loading-animation">
+                    <div class="pulse-ring"></div>
+                    <div class="pulse-ring delay-1"></div>
+                    <div class="pulse-ring delay-2"></div>
+                </div>
+                <p class="loading-text" id="loadingText">正在取得市場資料...</p>
+                <p class="loading-sub">爬取 TWSE、TPEx、元大權證網資料中</p>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Results -->
+        <section class="results-section" id="resultsSection" style="display:none">
+            <!-- Summary Bar -->
+            <div class="summary-bar" id="summaryBar"></div>
+
+            <!-- Filter Info -->
+            <div class="filter-info" id="filterInfo"></div>
+
+            <!-- Top Sectors -->
+            <div class="card sectors-card" id="sectorsCard" style="display:none">
+                <h3>產業動能 TOP 5</h3>
+                <div class="sector-bars" id="sectorBars"></div>
+            </div>
+
+            <!-- Day Cards -->
+            <div id="dayCards"></div>
+
+            <!-- Cluster Overview -->
+            <div class="card" id="clusterCard" style="display:none">
+                <h3>族群熱度總覽</h3>
+                <div id="clusterBars"></div>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-bar" id="statsBar"></div>
+
+            <!-- Back Button -->
+            <button class="back-btn" onclick="goBack()">重新輸入</button>
+        </section>
+    </div>
+
+    <script>
+    async function runAnalysis() {
+        const input = document.getElementById('inputText').value.trim();
+        if (!input) return alert('請輸入明牌資料');
+
+        // Show loading
+        document.getElementById('inputSection').style.display = 'none';
+        document.getElementById('resultsSection').style.display = 'none';
+        document.getElementById('loadingSection').style.display = 'block';
+
+        // Animate progress bar
+        const fill = document.getElementById('progressFill');
+        const loadingText = document.getElementById('loadingText');
+        let progress = 0;
+        const steps = [
+            '取得處置股資料...',
+            '取得產業別與公司名稱...',
+            '計算產業指數動能...',
+            '取得成交量資料...',
+            '取得融資使用率...',
+            '查詢權證資料...',
+        ];
+        const interval = setInterval(() => {
+            if (progress < 90) {
+                progress += Math.random() * 8;
+                if (progress > 90) progress = 90;
+                fill.style.width = progress + '%';
+                const stepIdx = Math.min(Math.floor(progress / 16), steps.length - 1);
+                loadingText.textContent = steps[stepIdx];
+            }
+        }, 800);
+
+        try {
+            const resp = await fetch('/analyze', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({input}),
+            });
+            const data = await resp.json();
+
+            clearInterval(interval);
+            fill.style.width = '100%';
+            loadingText.textContent = '完成！';
+
+            if (data.error) {
+                alert(data.error);
+                goBack();
+                return;
+            }
+
+            setTimeout(() => renderResults(data), 300);
+        } catch (err) {
+            clearInterval(interval);
+            alert('分析失敗：' + err.message);
+            goBack();
+        }
+    }
+
+    function goBack() {
+        document.getElementById('inputSection').style.display = 'block';
+        document.getElementById('loadingSection').style.display = 'none';
+        document.getElementById('resultsSection').style.display = 'none';
+    }
+
+    function scoreColor(score) {
+        if (score >= 80) return '#10b981';
+        if (score >= 60) return '#f59e0b';
+        if (score >= 40) return '#ef4444';
+        return '#6b7280';
+    }
+
+    function stockScoreClass(score) {
+        if (score >= 80) return 'score-high';
+        if (score >= 60) return 'score-mid';
+        if (score >= 40) return 'score-low';
+        return 'score-very-low';
+    }
+
+    function renderResults(data) {
+        document.getElementById('loadingSection').style.display = 'none';
+        document.getElementById('resultsSection').style.display = 'block';
+
+        // Summary bar
+        document.getElementById('summaryBar').innerHTML = `
+            <div class="summary-item">
+                <span class="summary-label">日期</span>
+                <span class="summary-value">${data.date}</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label">處置股</span>
+                <span class="summary-value">${data.disposition_count} 檔</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label">分析標的</span>
+                <span class="summary-value">${data.stats.total} 檔</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label">有好權證</span>
+                <span class="summary-value accent">${data.stats.with_warrants} 檔</span>
+            </div>
+        `;
+
+        // Filter info
+        document.getElementById('filterInfo').innerHTML = `
+            <div class="filter-tags">
+                <span class="tag">認購</span>
+                <span class="tag">到期≥120天</span>
+                <span class="tag">價內10%~價外15%</span>
+                <span class="tag">流通比≤70%</span>
+                <span class="tag">券商: ${data.issuers.join(', ')}</span>
+            </div>
+            <div class="filter-scoring">排序: 族群密度 35% + 產業動能 35% + 成交量 30%</div>
+        `;
+
+        // Top sectors
+        if (data.top_sectors && data.top_sectors.length) {
+            document.getElementById('sectorsCard').style.display = 'block';
+            const maxPct = Math.max(...data.top_sectors.map(s => Math.abs(s.pct)));
+            document.getElementById('sectorBars').innerHTML = data.top_sectors.map(s => {
+                const width = Math.abs(s.pct) / maxPct * 100;
+                const color = s.pct >= 0 ? '#ef4444' : '#22c55e';
+                return `
+                    <div class="sector-row">
+                        <span class="sector-name">${s.name.replace('類指數', '')}</span>
+                        <div class="sector-bar-wrap">
+                            <div class="sector-bar-fill" style="width:${width}%;background:${color}"></div>
+                        </div>
+                        <span class="sector-pct" style="color:${color}">${s.pct >= 0 ? '+' : ''}${s.pct.toFixed(2)}%</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Day cards
+        let dayHtml = '';
+        for (const day of data.days) {
+            dayHtml += `<div class="day-card card">`;
+            dayHtml += `<h3 class="day-label">${day.label}</h3>`;
+
+            for (const s of day.stocks) {
+                const hasWarrants = s.warrants && s.warrants.length > 0;
+                const scoreClass = stockScoreClass(s.stock_score);
+                const dispBadge = s.is_disposition
+                    ? `<span class="badge badge-disp">處置${s.disp_level ? ' ' + s.disp_level : ''}</span>`
+                    : `<span class="badge badge-normal">非處置</span>`;
+
+                // Info chips
+                let chips = '';
+                if (s.industry) chips += `<span class="chip">${s.industry}</span>`;
+                if (s.cluster_count > 1) chips += `<span class="chip">族群${s.cluster_count}檔</span>`;
+                if (s.sector_mom !== null && s.sector_mom !== undefined) {
+                    const momColor = s.sector_mom >= 0 ? 'chip-up' : 'chip-down';
+                    chips += `<span class="chip ${momColor}">產業${s.sector_mom >= 0 ? '+' : ''}${s.sector_mom.toFixed(1)}%</span>`;
+                }
+                if (s.volume_str) chips += `<span class="chip">${s.volume_str}</span>`;
+                if (s.margin_rate !== null && s.margin_rate !== undefined) {
+                    const marginClass = s.margin_rate >= 60 ? 'chip-warn' : '';
+                    chips += `<span class="chip ${marginClass}">${s.margin_rate >= 60 ? '⚠ ' : ''}融資${s.margin_rate.toFixed(0)}%</span>`;
+                }
+
+                dayHtml += `
+                    <div class="stock-item ${hasWarrants ? 'has-warrants' : 'no-warrants'}">
+                        <div class="stock-header">
+                            <div class="stock-score ${scoreClass}">${s.stock_score}</div>
+                            <div class="stock-info">
+                                <div class="stock-title">
+                                    <span class="stock-name">${s.name}</span>
+                                    <span class="stock-code">${s.code}</span>
+                                    ${dispBadge}
+                                </div>
+                                <div class="stock-chips">${chips}</div>
+                            </div>
+                        </div>
+                `;
+
+                if (hasWarrants) {
+                    dayHtml += `<div class="warrants-list">`;
+                    for (const w of s.warrants) {
+                        const ref = w.price || w.bid || w.ask;
+                        const priceStr = ref ? ref.toFixed(2) + '元' : '---';
+                        const daysStr = w.days_left ? Math.round(w.days_left) + '天' : '---';
+                        const ivVal = w.iv_bid || w.iv;
+
+                        let metrics = [];
+                        if (ivVal) metrics.push(`IV ${ivVal.toFixed(0)}%`);
+                        if (w.leverage) metrics.push(`槓桿 ${w.leverage.toFixed(1)}x`);
+                        if (w.spread !== null && w.spread !== undefined) metrics.push(`價差 ${w.spread.toFixed(1)}%`);
+                        if (w.outstanding !== null && w.outstanding !== undefined) metrics.push(`流通 ${w.outstanding.toFixed(0)}%`);
+
+                        const wScoreColor = scoreColor(w.score);
+
+                        dayHtml += `
+                            <div class="warrant-row">
+                                <div class="warrant-score" style="background:${wScoreColor}">${w.score}</div>
+                                <div class="warrant-info">
+                                    <div class="warrant-title">
+                                        <span class="warrant-code">${w.code}</span>
+                                        <span class="warrant-name">${w.name}</span>
+                                        <span class="warrant-issuer">${w.issuer}</span>
+                                    </div>
+                                    <div class="warrant-details">
+                                        ${priceStr} · 履約 ${w.strike ? w.strike.toFixed(2) : '---'} · ${w.in_out} · 到期 ${w.expiry} (${daysStr})
+                                    </div>
+                                    <div class="warrant-metrics">
+                                        ${metrics.map(m => `<span class="metric">${m}</span>`).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    dayHtml += `</div>`;
+                }
+
+                dayHtml += `</div>`;
+            }
+            dayHtml += `</div>`;
+        }
+        document.getElementById('dayCards').innerHTML = dayHtml;
+
+        // Cluster overview
+        if (data.clusters && data.clusters.length) {
+            document.getElementById('clusterCard').style.display = 'block';
+            const maxCluster = Math.max(...data.clusters.map(c => c.count));
+            document.getElementById('clusterBars').innerHTML = data.clusters.map(c => {
+                const width = c.count / maxCluster * 100;
+                const momStr = c.momentum !== null && c.momentum !== undefined
+                    ? `<span class="${c.momentum >= 0 ? 'up' : 'down'}">${c.momentum >= 0 ? '+' : ''}${c.momentum.toFixed(2)}%</span>`
+                    : '';
+                return `
+                    <div class="cluster-row">
+                        <span class="cluster-name">${c.industry}</span>
+                        <div class="cluster-bar-wrap">
+                            <div class="cluster-bar-fill" style="width:${width}%"></div>
+                            <span class="cluster-count">${c.count}檔</span>
+                        </div>
+                        <span class="cluster-mom">${momStr}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Stats
+        document.getElementById('statsBar').innerHTML = `
+            <span>共 ${data.stats.total} 檔</span>
+            <span>處置 ${data.stats.disposition} 檔</span>
+            <span>非處置 ${data.stats.non_disposition} 檔</span>
+            <span>有好權證 ${data.stats.with_warrants} 檔</span>
+        `;
+    }
+    </script>
+</body>
+</html>
