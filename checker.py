@@ -6,9 +6,18 @@ Refactored from disposition_checker.py for web use
 import re
 import json
 import math
+import warnings
 import requests
+import urllib3
 from datetime import date, timedelta
 from collections import Counter
+
+# 台灣政府網站 SSL 憑證在海外伺服器驗證會失敗，關閉警告
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# 建立共用 session，跳過 SSL 驗證
+_session = requests.Session()
+_session.verify = False
 
 # ============================================================
 #  Constants
@@ -96,7 +105,7 @@ def fetch_industry_and_name_map():
     name_to_code = {}
 
     try:
-        resp = requests.get("https://openapi.twse.com.tw/v1/opendata/t187ap03_L", timeout=15)
+        resp = _session.get("https://openapi.twse.com.tw/v1/opendata/t187ap03_L", timeout=15)
         resp.raise_for_status()
         for item in resp.json():
             sc = item.get("公司代號", "").strip()
@@ -110,7 +119,7 @@ def fetch_industry_and_name_map():
         pass
 
     try:
-        resp = requests.get("https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O", timeout=15)
+        resp = _session.get("https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O", timeout=15)
         resp.raise_for_status()
         for item in resp.json():
             sc = item.get("SecuritiesCompanyCode", "").strip()
@@ -129,7 +138,7 @@ def fetch_industry_and_name_map():
 def fetch_sector_index(target_date):
     date_str = target_date.strftime("%Y%m%d")
     url = f"https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?response=json&type=IND&date={date_str}"
-    resp = requests.get(url, timeout=10)
+    resp = _session.get(url, timeout=10)
     resp.raise_for_status()
     data = resp.json()
     result = {}
@@ -186,7 +195,7 @@ def fetch_twse_disposition(today=None):
     if today is None:
         today = date.today()
     url = "https://www.twse.com.tw/rwd/zh/announcement/punish?response=json"
-    resp = requests.get(url, timeout=10)
+    resp = _session.get(url, timeout=10)
     resp.raise_for_status()
     data = resp.json()
     stocks = {}
@@ -206,7 +215,7 @@ def fetch_twse_disposition(today=None):
 def fetch_tpex_disposition(today=None):
     if today is None:
         today = date.today()
-    resp = requests.get("https://www.tpex.org.tw/openapi/v1/tpex_disposal_information", timeout=10)
+    resp = _session.get("https://www.tpex.org.tw/openapi/v1/tpex_disposal_information", timeout=10)
     resp.raise_for_status()
     stocks = {}
     for item in resp.json():
@@ -231,7 +240,7 @@ def fetch_volume_data():
         date_str = d.strftime("%Y%m%d")
         try:
             url = f"https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?response=json&type=ALLBUT0999&date={date_str}"
-            resp = requests.get(url, timeout=15)
+            resp = _session.get(url, timeout=15)
             resp.raise_for_status()
             data = resp.json()
             if data.get("stat") == "OK" and data.get("tables"):
@@ -249,7 +258,7 @@ def fetch_volume_data():
             continue
 
     try:
-        resp = requests.get(
+        resp = _session.get(
             "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes",
             timeout=15,
         )
@@ -273,7 +282,7 @@ def fetch_margin_data():
         date_str = d.strftime("%Y%m%d")
         try:
             url = f"https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?response=json&date={date_str}&selectType=ALL"
-            resp = requests.get(url, timeout=15)
+            resp = _session.get(url, timeout=15)
             resp.raise_for_status()
             data = resp.json()
             if data.get("stat") == "OK" and data.get("tables"):
@@ -297,7 +306,7 @@ def fetch_margin_data():
         date_str = d.strftime("%Y/%m/%d")
         try:
             url = f"https://www.tpex.org.tw/www/zh-tw/margin/balance?date={date_str}&response=json"
-            resp = requests.get(url, timeout=15)
+            resp = _session.get(url, timeout=15)
             resp.raise_for_status()
             data = resp.json()
             if data.get("tables"):
@@ -385,7 +394,7 @@ def fetch_warrants_for_stock(stock_code, min_days=120, max_outstanding=70, top_n
         "Accept-Encoding": "gzip, deflate",
         "Referer": "https://www.warrantwin.com.tw/eyuanta/Warrant/Search.aspx",
     }
-    resp = requests.post(url, data={"data": json.dumps(payload)}, headers=headers, timeout=15)
+    resp = _session.post(url, data={"data": json.dumps(payload)}, headers=headers, timeout=15)
     resp.raise_for_status()
     result = resp.json()
 

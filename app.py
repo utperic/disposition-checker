@@ -40,7 +40,7 @@ def debug():
 
     for name, url in tests:
         try:
-            resp = requests.get(url, timeout=10)
+            resp = requests.get(url, timeout=10, verify=False)
             body = resp.text[:200]
             results[name] = {
                 "status": resp.status_code,
