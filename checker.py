@@ -506,8 +506,8 @@ def match_disposition(name, all_disposition):
 def compute_stock_scores(stock_entries, sector_momentum, volume_data,
                          margin_data, short_ratio_data):
     """
-    處置股評分: 族群密度30 + 產業動能30 + 成交量25 + 券資比15 - 融資扣分
-    CB股評分:   族群密度30 + 產業適性30 + 成交量25 + 券資比15 - 融資扣分
+    處置股評分: 族群密度35 + 產業動能35 + 成交量30 + 券資比bonus15 - 融資扣分
+    CB股評分:   族群密度35 + 產業適性35 + 成交量30 + 券資比bonus15 - 融資扣分
     """
     industry_counts = Counter()
     for s in stock_entries:
@@ -543,29 +543,27 @@ def compute_stock_scores(stock_entries, sector_momentum, volume_data,
         ind = s["industry"]
         is_disp = s.get("disp_info") is not None
 
-        # 族群密度 (30分)
+        # 族群密度 (35分)
         if ind and ind in industry_counts:
             count = industry_counts[ind]
-            score += 30 * (count / max_count)
+            score += 35 * (count / max_count)
 
-        # 產業動能 or 產業適性 (30分)
+        # 產業動能 or 產業適性 (35分)
         if is_disp:
-            # 處置股: 用產業指數動能
             idx_name = INDUSTRY_TO_INDEX.get(ind, "")
             if idx_name and idx_name in sector_momentum:
                 mom = sector_momentum[idx_name]
-                score += 30 * max(0, (mom - min_momentum) / momentum_range)
+                score += 35 * max(0, (mom - min_momentum) / momentum_range)
         else:
-            # CB股: 用產業適性 (科技高分、傳產低分)
-            score += CB_SECTOR_SCORE.get(ind, 10) * (30 / 35)
+            score += CB_SECTOR_SCORE.get(ind, 10)
 
-        # 成交量 (25分)
+        # 成交量 (30分)
         vol = s.get("volume")
         if vol is not None and vol > 0:
             log_vol = math.log10(vol)
-            score += 25 * max(0, (log_vol - min_log_vol) / log_vol_range)
+            score += 30 * max(0, (log_vol - min_log_vol) / log_vol_range)
 
-        # 券資比加分 (15分) - 空頭越多，軋空潛力越大
+        # 券資比 bonus (+15分) - 空頭越多，軋空潛力越大
         sr = short_ratio_data.get(s["code"], 0)
         s["short_ratio"] = sr
         if sr > 0:
