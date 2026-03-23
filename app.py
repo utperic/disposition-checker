@@ -53,5 +53,42 @@ def debug():
     return jsonify(results)
 
 
+@app.route("/debug_disp")
+def debug_disp():
+    """Check disposition matching for 欣興"""
+    from checker import (fetch_twse_disposition, fetch_tpex_disposition,
+                         match_disposition, parse_input,
+                         fetch_industry_and_name_map)
+    from datetime import date
+    today = date.today()
+
+    results = {}
+    try:
+        twse_disp = fetch_twse_disposition(today)
+        results["twse_count"] = len(twse_disp)
+        results["twse_has_欣興"] = "欣興" in twse_disp
+        if "欣興" in twse_disp:
+            results["twse_欣興"] = twse_disp["欣興"]
+    except Exception as e:
+        results["twse_error"] = str(e)
+
+    try:
+        tpex_disp = fetch_tpex_disposition(today)
+        results["tpex_count"] = len(tpex_disp)
+    except Exception as e:
+        results["tpex_error"] = str(e)
+
+    all_disp = {**twse_disp, **tpex_disp}
+    results["total_disp"] = len(all_disp)
+    results["all_disp_names"] = sorted(all_disp.keys())
+
+    # Test match
+    m = match_disposition("欣興", all_disp)
+    results["match_欣興"] = m is not None
+    results["match_detail"] = str(m) if m else None
+
+    return jsonify(results)
+
+
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
