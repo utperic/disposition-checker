@@ -303,7 +303,7 @@
                 <span class="tag">流通比≤70%</span>
                 <span class="tag">券商: ${data.issuers.join(', ')}</span>
             </div>
-            <div class="filter-scoring">排序: 族群密度 35% + 產業動能 35% + 成交量 30%</div>
+            <div class="filter-scoring">處置股: 族群30 + 產業動能30 + 量25 + 券資比15 | CB股: 族群30 + 產業適性30 + 量25 + 券資比15</div>
         `;
 
         // Top sectors
@@ -350,6 +350,10 @@
                 if (s.margin_rate !== null && s.margin_rate !== undefined) {
                     const marginClass = s.margin_rate >= 60 ? 'chip-warn' : '';
                     chips += `<span class="chip ${marginClass}">${s.margin_rate >= 60 ? '⚠ ' : ''}融資${s.margin_rate.toFixed(0)}%</span>`;
+                }
+                if (s.short_ratio !== null && s.short_ratio !== undefined && s.short_ratio > 0) {
+                    const srClass = s.short_ratio >= 20 ? 'chip-sr-high' : '';
+                    chips += `<span class="chip ${srClass}">券資比${s.short_ratio.toFixed(0)}%</span>`;
                 }
 
                 dayHtml += `

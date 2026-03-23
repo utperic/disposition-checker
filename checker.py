@@ -59,6 +59,24 @@ GOOD_ISSUERS = {
     "700": "兆豐", "910": "群益",
 }
 
+# CB 策略產業適性 (非處置股用)
+# 科技股 CB 市場買單度高，公司拉抬動機強
+CB_SECTOR_SCORE = {
+    # 高分 (35)
+    "半導體": 35, "電子零組件": 35, "通信網路": 35, "光電": 35,
+    "電腦週邊": 35, "資訊服務": 35, "數位雲端": 35,
+    # 中分 (20)
+    "生技醫療": 20, "其他電子": 20, "電子通路": 20, "電子商務": 20,
+    "綠能環保": 20,
+    # 中低分 (12)
+    "鋼鐵": 12, "汽車": 12, "化學": 12, "電機機械": 12, "建材營造": 12,
+    # 低分 (5) - 傳產/服務/觀光
+    "食品": 5, "紡織": 5, "觀光餐飲": 5, "貿易百貨": 5, "水泥": 5,
+    "塑膠": 5, "造紙": 5, "橡膠": 5, "玻璃陶瓷": 5, "油電燃氣": 5,
+    "金融保險": 5, "航運": 5, "農業科技": 5, "文化創意": 5,
+    "運動休閒": 5, "居家生活": 5, "其他": 10,
+}
+
 
 # ============================================================
 #  Utilities
@@ -275,8 +293,15 @@ def fetch_volume_data():
 
 
 def fetch_margin_data():
+    """回傳 (margin_data, short_ratio_data)
+    margin_data: {code: 融資使用率%}
+    short_ratio_data: {code: 券資比%}  (融券餘額/融資餘額*100)
+    """
     margin = {}
+    short_ratio = {}
     today = date.today()
+
+    # TWSE: 融資餘額=row[6], 融資限額=row[7], 融券餘額=row[12]
     for i in range(5):
         d = today - timedelta(days=i)
         date_str = d.strftime("%Y%m%d")
@@ -291,16 +316,20 @@ def fetch_margin_data():
                     if "融資融券" in title and "彙總" in title:
                         for row in tbl.get("data", []):
                             code = str(row[0]).strip()
-                            balance = parse_number(row[6])
-                            limit = parse_number(row[7])
-                            if code and balance is not None and limit and limit > 0:
-                                margin[code] = round(balance / limit * 100, 2)
+                            margin_bal = parse_number(row[6])
+                            margin_limit = parse_number(row[7])
+                            short_bal = parse_number(row[12])
+                            if code and margin_bal is not None and margin_limit and margin_limit > 0:
+                                margin[code] = round(margin_bal / margin_limit * 100, 2)
+                            if code and margin_bal and margin_bal > 0 and short_bal is not None:
+                                short_ratio[code] = round(short_bal / margin_bal * 100, 2)
                         break
                 if margin:
                     break
         except Exception:
             continue
 
+    # TPEx: 資使用率=row[8], 資餘額=row[6], 券餘額=row[14]
     for i in range(5):
         d = today - timedelta(days=i)
         date_str = d.strftime("%Y/%m/%d")
@@ -314,14 +343,18 @@ def fetch_margin_data():
                     for row in tbl.get("data", []):
                         code = str(row[0]).strip()
                         rate = parse_number(row[8])
+                        margin_bal = parse_number(row[6])
+                        short_bal = parse_number(row[14])
                         if code and rate is not None:
                             margin[code] = rate
+                        if code and margin_bal and margin_bal > 0 and short_bal is not None:
+                            short_ratio[code] = round(short_bal / margin_bal * 100, 2)
                 if margin:
                     break
         except Exception:
             continue
 
-    return margin
+    return margin, short_ratio
 
 
 # ============================================================
@@ -470,7 +503,12 @@ def match_disposition(name, all_disposition):
 #  Stock scoring
 # ============================================================
 
-def compute_stock_scores(stock_entries, sector_momentum, volume_data, margin_data):
+def compute_stock_scores(stock_entries, sector_momentum, volume_data,
+                         margin_data, short_ratio_data):
+    """
+    處置股評分: 族群密度30 + 產業動能30 + 成交量25 + 券資比15 - 融資扣分
+    CB股評分:   族群密度30 + 產業適性30 + 成交量25 + 券資比15 - 融資扣分
+    """
     industry_counts = Counter()
     for s in stock_entries:
         if s["industry"]:
@@ -495,29 +533,48 @@ def compute_stock_scores(stock_entries, sector_momentum, volume_data, margin_dat
     min_log_vol = min(log_volumes) if log_volumes else 0
     log_vol_range = max_log_vol - min_log_vol if max_log_vol != min_log_vol else 1
 
+    # 券資比正規化
+    sr_values = [short_ratio_data.get(s["code"], 0) for s in stock_entries]
+    max_sr = max(sr_values) if sr_values else 1
+    max_sr = max_sr if max_sr > 0 else 1
+
     for s in stock_entries:
         score = 0
         ind = s["industry"]
+        is_disp = s.get("disp_info") is not None
 
+        # 族群密度 (30分)
         if ind and ind in industry_counts:
             count = industry_counts[ind]
-            score += 35 * (count / max_count)
+            score += 30 * (count / max_count)
 
-        idx_name = INDUSTRY_TO_INDEX.get(ind, "")
-        if idx_name and idx_name in sector_momentum:
-            mom = sector_momentum[idx_name]
-            score += 35 * max(0, (mom - min_momentum) / momentum_range)
+        # 產業動能 or 產業適性 (30分)
+        if is_disp:
+            # 處置股: 用產業指數動能
+            idx_name = INDUSTRY_TO_INDEX.get(ind, "")
+            if idx_name and idx_name in sector_momentum:
+                mom = sector_momentum[idx_name]
+                score += 30 * max(0, (mom - min_momentum) / momentum_range)
+        else:
+            # CB股: 用產業適性 (科技高分、傳產低分)
+            score += CB_SECTOR_SCORE.get(ind, 10) * (30 / 35)
 
+        # 成交量 (25分)
         vol = s.get("volume")
         if vol is not None and vol > 0:
             log_vol = math.log10(vol)
-            score += 30 * max(0, (log_vol - min_log_vol) / log_vol_range)
+            score += 25 * max(0, (log_vol - min_log_vol) / log_vol_range)
+
+        # 券資比加分 (15分) - 空頭越多，軋空潛力越大
+        sr = short_ratio_data.get(s["code"], 0)
+        s["short_ratio"] = sr
+        if sr > 0:
+            score += 15 * min(1, sr / max_sr)
 
         # 融資使用率扣分: >40% 開始扣，>60% 重扣 (最多扣15分)
         margin = margin_data.get(s["code"])
         s["margin_rate"] = margin
         if margin is not None and margin > 40:
-            # 40%~60% 線性扣 0~8 分，60%~90% 線性扣 8~15 分
             if margin <= 60:
                 score -= 8 * (margin - 40) / 20
             else:
@@ -566,8 +623,8 @@ def run_analysis(input_text, progress_cb=None):
     progress(4, 6, "取得成交量...")
     volume_data = fetch_volume_data()
 
-    progress(5, 6, "取得融資使用率...")
-    margin_data = fetch_margin_data()
+    progress(5, 6, "取得融資融券資料...")
+    margin_data, short_ratio_data = fetch_margin_data()
 
     # Parse input
     parsed = parse_input(input_text)
@@ -604,7 +661,8 @@ def run_analysis(input_text, progress_cb=None):
                     "disp_info": disp, "day_label": day_label,
                 })
 
-    compute_stock_scores(stock_entries, sector_momentum, volume_data, margin_data)
+    compute_stock_scores(stock_entries, sector_momentum, volume_data,
+                         margin_data, short_ratio_data)
 
     # Fetch warrants
     progress(6, 6, f"查詢 {len(stock_entries)} 檔標的的權證...")
@@ -639,6 +697,7 @@ def run_analysis(input_text, progress_cb=None):
                 "volume": entry.get("volume") if entry else None,
                 "volume_str": format_volume(entry.get("volume")) if entry else None,
                 "margin_rate": entry.get("margin_rate") if entry else None,
+                "short_ratio": entry.get("short_ratio") if entry else None,
                 "is_disposition": disp is not None,
                 "disp_level": disp.get("level", "") if disp else "",
                 "warrants": warrants,
