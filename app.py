@@ -63,6 +63,8 @@ def debug_disp():
     today = date.today()
 
     results = {}
+    twse_disp = {}
+    tpex_disp = {}
     try:
         twse_disp = fetch_twse_disposition(today)
         results["twse_count"] = len(twse_disp)
