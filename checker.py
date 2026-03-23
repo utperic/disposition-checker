@@ -513,8 +513,17 @@ def compute_stock_scores(stock_entries, sector_momentum, volume_data, margin_dat
             log_vol = math.log10(vol)
             score += 30 * max(0, (log_vol - min_log_vol) / log_vol_range)
 
-        s["margin_rate"] = margin_data.get(s["code"])
-        s["stock_score"] = round(score, 1)
+        # 融資使用率扣分: >40% 開始扣，>60% 重扣 (最多扣15分)
+        margin = margin_data.get(s["code"])
+        s["margin_rate"] = margin
+        if margin is not None and margin > 40:
+            # 40%~60% 線性扣 0~8 分，60%~90% 線性扣 8~15 分
+            if margin <= 60:
+                score -= 8 * (margin - 40) / 20
+            else:
+                score -= 8 + 7 * min(1, (margin - 60) / 30)
+
+        s["stock_score"] = round(max(score, 0), 1)
         s["cluster_count"] = industry_counts.get(ind, 0) if ind else 0
 
         idx_name = INDUSTRY_TO_INDEX.get(ind, "")
