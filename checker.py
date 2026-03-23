@@ -421,6 +421,14 @@ def fetch_warrants_for_stock(stock_code, min_days=120, max_outstanding=70, top_n
             continue
         if w["spread"] is not None and w["spread"] >= 100:
             continue
+        # 程式端 hard filter: 價內5%~價外20%
+        in_out_str = w["in_out"]
+        in_out_pct = parse_number(re.sub(r"[%價內外]", "", in_out_str)) if in_out_str else None
+        if in_out_pct is not None:
+            if "價內" in in_out_str and in_out_pct > 5:
+                continue
+            if "價外" in in_out_str and in_out_pct > 20:
+                continue
         w["score"] = compute_warrant_score(w)
         w["issuer"] = GOOD_ISSUERS.get(w["issuer_id"], "")
         warrants.append(w)
