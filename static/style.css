@@ -405,8 +405,8 @@ button#analyzeBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 
 .badge-normal {
-    background: rgba(107, 114, 128, 0.12);
-    color: var(--text-muted);
+    background: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
 }
 
 .stock-chips {
