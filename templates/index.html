@@ -320,7 +320,7 @@
                 <span class="tag">流通比≤70%</span>
                 <span class="tag">券商: ${data.issuers.join(', ')}</span>
             </div>
-            <div class="filter-scoring">處置股: 族群35 + 動能35 + 量30 + 券資比+15 | CB股: 族群35 + 適性35 + 量30 + 券資比+15</div>
+            <div class="filter-scoring">處置股: 產業熱度35 + 動能35 + 量30 + 券資比+15 | CB股: 產業熱度35 + 適性35 + 量30 + 券資比+15</div>
         `;
 
         // Top sectors
@@ -358,7 +358,7 @@
                 // Info chips
                 let chips = '';
                 if (s.industry) chips += `<span class="chip">${s.industry}</span>`;
-                if (s.cluster_count > 1) chips += `<span class="chip">族群${s.cluster_count}檔</span>`;
+                if (s.cluster_count > 1) chips += `<span class="chip">處置同業${s.cluster_count}檔</span>`;
                 if (s.sector_mom !== null && s.sector_mom !== undefined) {
                     const momColor = s.sector_mom >= 0 ? 'chip-up' : 'chip-down';
                     chips += `<span class="chip ${momColor}">產業${s.sector_mom >= 0 ? '+' : ''}${s.sector_mom.toFixed(1)}%</span>`;

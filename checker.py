@@ -524,15 +524,27 @@ def match_disposition(name, all_disposition):
 # ============================================================
 
 def compute_stock_scores(stock_entries, sector_momentum, volume_data,
-                         margin_data, short_ratio_data):
+                         margin_data, short_ratio_data,
+                         all_disposition=None, industry_map=None):
     """
-    處置股評分: 族群密度35 + 產業動能35 + 成交量30 + 券資比bonus15 - 融資扣分
-    CB股評分:   族群密度35 + 產業適性35 + 成交量30 + 券資比bonus15 - 融資扣分
+    處置股評分: 族群熱度35 + 產業動能35 + 成交量30 + 券資比bonus15 - 融資扣分
+    CB股評分:   族群熱度35 + 產業適性35 + 成交量30 + 券資比bonus15 - 融資扣分
+
+    族群熱度基於全部處置股的產業分布，而非 input 標的
     """
+    # 用全部處置股計算產業熱度（不受 input 樣本數影響）
     industry_counts = Counter()
-    for s in stock_entries:
-        if s["industry"]:
-            industry_counts[s["industry"]] += 1
+    if all_disposition and industry_map:
+        for info in all_disposition.values():
+            code = info.get("code", "")
+            ind = industry_map.get(code, "")
+            if ind:
+                industry_counts[ind] += 1
+    # Fallback: 如果沒有處置股資料，用 input 標的
+    if not industry_counts:
+        for s in stock_entries:
+            if s["industry"]:
+                industry_counts[s["industry"]] += 1
 
     max_count = max(industry_counts.values()) if industry_counts else 1
 
@@ -686,7 +698,8 @@ def run_analysis(input_text, progress_cb=None):
                 })
 
     compute_stock_scores(stock_entries, sector_momentum, volume_data,
-                         margin_data, short_ratio_data)
+                         margin_data, short_ratio_data,
+                         all_disposition, industry_map)
 
     # Fetch warrants
     progress(6, 6, f"查詢 {len(stock_entries)} 檔標的的權證...")
@@ -732,14 +745,16 @@ def run_analysis(input_text, progress_cb=None):
         day_stocks.sort(key=lambda x: -x["stock_score"])
         days.append({"label": day_label, "stocks": day_stocks})
 
-    # Cluster summary
-    ind_counts = Counter()
-    for s in stock_entries:
-        if s["industry"]:
-            ind_counts[s["industry"]] += 1
+    # Cluster summary — based on all disposition stocks
+    disp_ind_counts = Counter()
+    for info in all_disposition.values():
+        code = info.get("code", "")
+        ind = industry_map.get(code, "")
+        if ind:
+            disp_ind_counts[ind] += 1
 
     clusters = []
-    for ind, cnt in ind_counts.most_common():
+    for ind, cnt in disp_ind_counts.most_common():
         idx_name = INDUSTRY_TO_INDEX.get(ind, "")
         mom = sector_momentum.get(idx_name)
         clusters.append({"industry": ind, "count": cnt, "momentum": mom})
