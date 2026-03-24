@@ -627,6 +627,14 @@ button#analyzeBtn:disabled { opacity: 0.5; cursor: not-allowed; }
     font-size: 0.78rem;
 }
 
+.quote-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    padding: 1px 5px;
+    background: rgba(107, 114, 128, 0.15);
+    border-radius: 3px;
+}
+
 /* ============================================================
    Action Buttons
    ============================================================ */
@@ -652,6 +660,26 @@ button#analyzeBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 .refresh-btn:hover { opacity: 0.9; }
 .refresh-btn:active { opacity: 0.8; }
 .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.auto-refresh-btn {
+    padding: 10px 16px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.auto-refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.auto-refresh-btn.active {
+    background: rgba(16, 185, 129, 0.15);
+    border-color: var(--green);
+    color: var(--green);
+}
 
 /* ============================================================
    Back Button

@@ -73,10 +73,11 @@
 
             <!-- Action Buttons -->
             <div class="action-btns">
-                <button class="refresh-btn" id="refreshBtn" onclick="refreshQuotes()">
+                <button class="refresh-btn" id="refreshBtn" onclick="refreshQuotes(false)">
                     <span class="refresh-text">更新報價</span>
                     <span class="refresh-loading" style="display:none"><span class="spinner"></span>更新中...</span>
                 </button>
+                <button class="auto-refresh-btn" id="autoRefreshToggle" onclick="toggleAutoRefresh()">自動</button>
                 <button class="back-btn" onclick="goBack()">重新輸入</button>
             </div>
         </section>
@@ -257,6 +258,10 @@
     }
 
     function goBack() {
+        if (autoRefreshTimer) {
+            clearInterval(autoRefreshTimer);
+            autoRefreshTimer = null;
+        }
         document.getElementById('inputSection').style.display = 'block';
         document.getElementById('loadingSection').style.display = 'none';
         document.getElementById('resultsSection').style.display = 'none';
@@ -459,12 +464,16 @@
         `;
     }
 
-    async function refreshQuotes() {
+    let autoRefreshTimer = null;
+
+    async function refreshQuotes(silent) {
         if (!lastAnalysisData) return;
         const btn = document.getElementById('refreshBtn');
-        btn.querySelector('.refresh-text').style.display = 'none';
-        btn.querySelector('.refresh-loading').style.display = 'inline';
-        btn.disabled = true;
+        if (!silent) {
+            btn.querySelector('.refresh-text').style.display = 'none';
+            btn.querySelector('.refresh-loading').style.display = 'inline';
+            btn.disabled = true;
+        }
 
         // Collect all stock codes + market from analysis data
         const stocks = [];
@@ -486,39 +495,74 @@
             });
             const quotes = await resp.json();
             if (quotes.error) {
-                alert('更新失敗: ' + quotes.error);
+                if (!silent) alert('更新失敗: ' + quotes.error);
             } else {
-                // Update each stock quote display
+                let updatedCount = 0;
                 for (const [code, q] of Object.entries(quotes)) {
                     const el = document.getElementById('quote-' + code);
                     if (!el) continue;
-                    const price = q.price && q.price !== '-' ? parseFloat(q.price) : null;
-                    if (!price) {
-                        el.innerHTML = `<span class="quote-na">尚無成交</span>`;
+
+                    // Use trade price; if unavailable use prev_close as fallback
+                    const tradePrice = q.price && q.price !== '-' ? parseFloat(q.price) : null;
+                    const prevClose = q.prev_close && q.prev_close !== '-' ? parseFloat(q.prev_close) : null;
+                    const displayPrice = tradePrice || prevClose;
+
+                    if (!displayPrice) {
+                        el.innerHTML = `<span class="quote-na">無報價資料</span>`;
                         continue;
                     }
-                    const changeStr = q.change !== null
-                        ? (q.change >= 0 ? '+' : '') + q.change.toFixed(2)
-                        : '';
-                    const pctStr = q.change_pct !== null
-                        ? (q.change_pct >= 0 ? '+' : '') + q.change_pct.toFixed(2) + '%'
-                        : '';
-                    const colorClass = q.change > 0 ? 'quote-up' : q.change < 0 ? 'quote-down' : 'quote-flat';
+
+                    updatedCount++;
+                    const isLive = tradePrice !== null;
+                    let changeStr = '', pctStr = '', colorClass = 'quote-flat';
+
+                    if (isLive && q.change !== null) {
+                        changeStr = (q.change >= 0 ? '+' : '') + q.change.toFixed(2);
+                        pctStr = (q.change_pct >= 0 ? '+' : '') + q.change_pct.toFixed(2) + '%';
+                        colorClass = q.change > 0 ? 'quote-up' : q.change < 0 ? 'quote-down' : 'quote-flat';
+                    }
+
+                    const label = isLive ? '' : '<span class="quote-label">昨收</span>';
+                    const volStr = q.volume && q.volume !== '-' ? `<span class="quote-vol">量 ${q.volume}張</span>` : '';
+                    const timeStr = q.time ? `<span class="quote-time">${q.time}</span>` : '';
+
                     el.innerHTML = `
-                        <span class="quote-price ${colorClass}">${price.toFixed(2)}</span>
+                        ${label}
+                        <span class="quote-price ${colorClass}">${displayPrice.toFixed(2)}</span>
                         <span class="quote-change ${colorClass}">${changeStr}</span>
                         <span class="quote-pct ${colorClass}">${pctStr}</span>
-                        <span class="quote-vol">量 ${q.volume}張</span>
-                        <span class="quote-time">${q.time || ''}</span>
+                        ${volStr}
+                        ${timeStr}
                     `;
                 }
+                // Update button text with timestamp
+                const now = new Date();
+                const ts = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0') + ':' + now.getSeconds().toString().padStart(2,'0');
+                btn.querySelector('.refresh-text').textContent = `更新報價 (${ts})`;
             }
         } catch (err) {
-            alert('更新失敗: ' + err.message);
+            if (!silent) alert('更新失敗: ' + err.message);
         } finally {
-            btn.querySelector('.refresh-text').style.display = 'inline';
-            btn.querySelector('.refresh-loading').style.display = 'none';
-            btn.disabled = false;
+            if (!silent) {
+                btn.querySelector('.refresh-text').style.display = 'inline';
+                btn.querySelector('.refresh-loading').style.display = 'none';
+                btn.disabled = false;
+            }
+        }
+    }
+
+    function toggleAutoRefresh() {
+        const toggle = document.getElementById('autoRefreshToggle');
+        if (autoRefreshTimer) {
+            clearInterval(autoRefreshTimer);
+            autoRefreshTimer = null;
+            toggle.textContent = '自動';
+            toggle.classList.remove('active');
+        } else {
+            refreshQuotes(true);
+            autoRefreshTimer = setInterval(() => refreshQuotes(true), 15000);
+            toggle.textContent = '自動 ON';
+            toggle.classList.add('active');
         }
     }
     </script>
