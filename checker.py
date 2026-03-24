@@ -367,33 +367,46 @@ def fetch_margin_data():
 # ============================================================
 
 def compute_warrant_score(w):
+    """
+    權證評分 (滿分100):
+      槓桿 35分: 3~6x 滿分，<1.5 或 >10 歸零
+      價差 25分: 越小越好
+      IV   20分: 越低越好
+      流通 20分: 越低越好（0% 全新最佳）
+    """
     score = 0
+
+    # 槓桿 (35分) — 甜蜜區 3~6x
     lev = w.get("leverage")
     if lev is not None:
-        if 3 <= lev <= 8:
-            score += 40 * min(lev / 5, 1)
-        elif lev > 8:
-            score += 40 * max(0, 1 - (lev - 8) / 8)
-        elif lev > 0:
-            score += 40 * (lev / 3)
+        if 3 <= lev <= 6:
+            score += 35
+        elif lev > 6:
+            score += 35 * max(0, 1 - (lev - 6) / 4)  # 6→10 遞減
+        elif lev >= 1.5:
+            score += 35 * ((lev - 1.5) / 1.5)  # 1.5→3 遞增
+        # < 1.5 → 0
     else:
         score += 10
 
+    # 價差 (25分)
     spread = w.get("spread")
     if spread is not None and spread < 100:
         score += 25 * max(0, 1 - spread / 15)
     elif spread is None:
         score += 10
 
+    # IV (20分)
     iv_val = w.get("iv_bid") or w.get("iv")
     if iv_val is not None:
         score += 20 * max(0, 1 - max(0, iv_val - 40) / 80)
     else:
         score += 8
 
+    # 流通比 (20分) — 越低越好
     out = w.get("outstanding")
     if out is not None:
-        score += 15 * max(0, 1 - out / 60)
+        score += 20 * max(0, 1 - out / 60)
     else:
         score += 5
 
