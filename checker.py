@@ -120,6 +120,7 @@ def format_volume(vol):
 
 def fetch_industry_and_name_map():
     code_to_industry = {}
+    code_to_market = {}
     name_to_code = {}
 
     try:
@@ -131,6 +132,8 @@ def fetch_industry_and_name_map():
             sn = item.get("公司簡稱", "").strip()
             if sc and ic:
                 code_to_industry[sc] = INDUSTRY_MAP.get(ic, ic)
+            if sc:
+                code_to_market[sc] = "上市"
             if sc and sn:
                 name_to_code[sn] = sc
     except Exception:
@@ -145,12 +148,14 @@ def fetch_industry_and_name_map():
             sn = item.get("CompanyAbbreviation", "").strip()
             if sc and ic:
                 code_to_industry[sc] = INDUSTRY_MAP.get(ic, ic)
+            if sc:
+                code_to_market[sc] = "上櫃"
             if sc and sn:
                 name_to_code[sn] = sc
     except Exception:
         pass
 
-    return code_to_industry, name_to_code
+    return code_to_industry, name_to_code, code_to_market
 
 
 def fetch_sector_index(target_date):
@@ -615,7 +620,7 @@ def run_analysis(input_text, progress_cb=None):
     all_disposition = {**twse_disp, **tpex_disp}
 
     progress(2, 6, "取得產業別與公司名稱...")
-    industry_map, all_name_to_code = fetch_industry_and_name_map()
+    industry_map, all_name_to_code, code_to_market = fetch_industry_and_name_map()
 
     progress(3, 6, "計算產業指數動能...")
     sector_momentum, latest_dt, early_dt = fetch_sector_momentum()
@@ -656,9 +661,15 @@ def run_analysis(input_text, progress_cb=None):
                 seen.add(code)
                 ind = industry_map.get(code, "")
                 disp = match_disposition(name, all_disposition)
+                market = ""
+                if disp:
+                    market = disp.get("market", "")
+                elif code in code_to_market:
+                    market = code_to_market[code]
                 stock_entries.append({
                     "name": name, "code": code, "industry": ind,
                     "disp_info": disp, "day_label": day_label,
+                    "market": market,
                 })
 
     compute_stock_scores(stock_entries, sector_momentum, volume_data,
@@ -698,6 +709,7 @@ def run_analysis(input_text, progress_cb=None):
                 "volume_str": format_volume(entry.get("volume")) if entry else None,
                 "margin_rate": entry.get("margin_rate") if entry else None,
                 "short_ratio": entry.get("short_ratio") if entry else None,
+                "market": entry.get("market", "") if entry else "",
                 "is_disposition": disp is not None,
                 "disp_level": disp.get("level", "") if disp else "",
                 "warrants": warrants,

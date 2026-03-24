@@ -586,11 +586,77 @@ button#analyzeBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 
 /* ============================================================
+   Stock Quote Display
+   ============================================================ */
+.stock-quote {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+    font-size: 0.82rem;
+}
+
+.stock-quote:empty { display: none; }
+
+.quote-price {
+    font-weight: 700;
+    font-size: 0.95rem;
+}
+
+.quote-change, .quote-pct {
+    font-weight: 600;
+}
+
+.quote-up { color: var(--red); }
+.quote-down { color: var(--green); }
+.quote-flat { color: var(--text-dim); }
+
+.quote-vol {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
+.quote-time {
+    color: var(--text-muted);
+    font-size: 0.72rem;
+}
+
+.quote-na {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+}
+
+/* ============================================================
+   Action Buttons
+   ============================================================ */
+.action-btns {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.refresh-btn {
+    padding: 10px 28px;
+    background: linear-gradient(135deg, #6366f1, #818cf8);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.refresh-btn:hover { opacity: 0.9; }
+.refresh-btn:active { opacity: 0.8; }
+.refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ============================================================
    Back Button
    ============================================================ */
 .back-btn {
-    display: block;
-    margin: 20px auto;
     padding: 10px 28px;
     background: transparent;
     border: 1px solid var(--border);

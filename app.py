@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, jsonify
 import json
 import requests
-from checker import run_analysis
+from checker import run_analysis, fetch_warrants_for_stock, _session
 
 app = Flask(__name__)
 
@@ -22,6 +22,71 @@ def analyze():
         result = run_analysis(input_text)
     except Exception as e:
         return jsonify({"error": f"分析失敗: {str(e)}"}), 500
+    return jsonify(result)
+
+
+@app.route("/refresh_quotes", methods=["POST"])
+def refresh_quotes():
+    """Fetch real-time stock quotes from TWSE/TPEx"""
+    data = request.get_json()
+    # stocks: [{code, market}] where market is "上市" or "上櫃"
+    stocks = data.get("stocks", [])
+    if not stocks:
+        return jsonify({"error": "No stocks provided"}), 400
+
+    # Build query: tse_XXXX.tw for TWSE, otc_XXXX.tw for TPEx
+    parts = []
+    for s in stocks:
+        prefix = "tse" if s.get("market") != "上櫃" else "otc"
+        parts.append(f"{prefix}_{s['code']}.tw")
+
+    # TWSE mis API supports batch query
+    query = "|".join(parts)
+    try:
+        url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch={query}"
+        resp = _session.get(url, timeout=10)
+        resp.raise_for_status()
+        raw = resp.json()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    result = {}
+    for item in raw.get("msgArray", []):
+        code = item.get("c", "")
+        price = item.get("z", "-")  # 成交價
+        prev_close = item.get("y", "-")  # 昨收
+        open_price = item.get("o", "-")  # 開盤
+        high = item.get("h", "-")  # 最高
+        low = item.get("l", "-")  # 最低
+        volume = item.get("v", "-")  # 成交量(張)
+        name = item.get("n", "")
+        time = item.get("t", "")  # 時間
+
+        # Calculate change
+        change = None
+        change_pct = None
+        try:
+            p = float(price) if price != "-" else None
+            y = float(prev_close) if prev_close != "-" else None
+            if p and y:
+                change = round(p - y, 2)
+                change_pct = round((p - y) / y * 100, 2)
+        except (ValueError, ZeroDivisionError):
+            pass
+
+        result[code] = {
+            "name": name,
+            "price": price,
+            "prev_close": prev_close,
+            "open": open_price,
+            "high": high,
+            "low": low,
+            "volume": volume,
+            "time": time,
+            "change": change,
+            "change_pct": change_pct,
+        }
+
     return jsonify(result)
 
 

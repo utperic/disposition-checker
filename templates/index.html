@@ -71,8 +71,14 @@
             <!-- Stats -->
             <div class="stats-bar" id="statsBar"></div>
 
-            <!-- Back Button -->
-            <button class="back-btn" onclick="goBack()">重新輸入</button>
+            <!-- Action Buttons -->
+            <div class="action-btns">
+                <button class="refresh-btn" id="refreshBtn" onclick="refreshQuotes()">
+                    <span class="refresh-text">更新報價</span>
+                    <span class="refresh-loading" style="display:none"><span class="spinner"></span>更新中...</span>
+                </button>
+                <button class="back-btn" onclick="goBack()">重新輸入</button>
+            </div>
         </section>
 
         <!-- Floating Selection Bar -->
@@ -95,7 +101,8 @@
     </div>
 
     <script>
-    // Selection state
+    // Global state
+    let lastAnalysisData = null; // Store last analysis result
     const selected = new Map(); // code -> {type: 'stock'|'warrant', name, code}
 
     function toggleSelect(code, name, type) {
@@ -240,6 +247,7 @@
                 return;
             }
 
+            lastAnalysisData = data;
             setTimeout(() => renderResults(data), 300);
         } catch (err) {
             clearInterval(interval);
@@ -368,6 +376,7 @@
                                     ${dispBadge}
                                 </div>
                                 <div class="stock-chips">${chips}</div>
+                                <div class="stock-quote" id="quote-${s.code}"></div>
                             </div>
                         </div>
                 `;
@@ -448,6 +457,69 @@
             <span>非處置 ${data.stats.non_disposition} 檔</span>
             <span>有好權證 ${data.stats.with_warrants} 檔</span>
         `;
+    }
+
+    async function refreshQuotes() {
+        if (!lastAnalysisData) return;
+        const btn = document.getElementById('refreshBtn');
+        btn.querySelector('.refresh-text').style.display = 'none';
+        btn.querySelector('.refresh-loading').style.display = 'inline';
+        btn.disabled = true;
+
+        // Collect all stock codes + market from analysis data
+        const stocks = [];
+        const seen = new Set();
+        for (const day of lastAnalysisData.days) {
+            for (const s of day.stocks) {
+                if (s.code && s.code !== '?' && !seen.has(s.code)) {
+                    seen.add(s.code);
+                    stocks.push({ code: s.code, market: s.market || '' });
+                }
+            }
+        }
+
+        try {
+            const resp = await fetch('/refresh_quotes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ stocks }),
+            });
+            const quotes = await resp.json();
+            if (quotes.error) {
+                alert('更新失敗: ' + quotes.error);
+            } else {
+                // Update each stock quote display
+                for (const [code, q] of Object.entries(quotes)) {
+                    const el = document.getElementById('quote-' + code);
+                    if (!el) continue;
+                    const price = q.price && q.price !== '-' ? parseFloat(q.price) : null;
+                    if (!price) {
+                        el.innerHTML = `<span class="quote-na">尚無成交</span>`;
+                        continue;
+                    }
+                    const changeStr = q.change !== null
+                        ? (q.change >= 0 ? '+' : '') + q.change.toFixed(2)
+                        : '';
+                    const pctStr = q.change_pct !== null
+                        ? (q.change_pct >= 0 ? '+' : '') + q.change_pct.toFixed(2) + '%'
+                        : '';
+                    const colorClass = q.change > 0 ? 'quote-up' : q.change < 0 ? 'quote-down' : 'quote-flat';
+                    el.innerHTML = `
+                        <span class="quote-price ${colorClass}">${price.toFixed(2)}</span>
+                        <span class="quote-change ${colorClass}">${changeStr}</span>
+                        <span class="quote-pct ${colorClass}">${pctStr}</span>
+                        <span class="quote-vol">量 ${q.volume}張</span>
+                        <span class="quote-time">${q.time || ''}</span>
+                    `;
+                }
+            }
+        } catch (err) {
+            alert('更新失敗: ' + err.message);
+        } finally {
+            btn.querySelector('.refresh-text').style.display = 'inline';
+            btn.querySelector('.refresh-loading').style.display = 'none';
+            btn.disabled = false;
+        }
     }
     </script>
 </body>
