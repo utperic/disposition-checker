@@ -635,6 +635,16 @@ button#analyzeBtn:disabled { opacity: 0.5; cursor: not-allowed; }
     border-radius: 3px;
 }
 
+.quote-spread {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+}
+
+.quote-spread-pct {
+    color: var(--yellow);
+    font-weight: 600;
+}
+
 /* ============================================================
    Action Buttons
    ============================================================ */

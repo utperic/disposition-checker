@@ -62,6 +62,28 @@ def refresh_quotes():
         name = item.get("n", "")
         time = item.get("t", "")  # 時間
 
+        # Best bid/ask from 五檔
+        bid_str = item.get("b", "")  # 買價 (best first, _ separated)
+        ask_str = item.get("a", "")  # 賣價 (best first, _ separated)
+        best_bid = None
+        best_ask = None
+        spread = None
+        spread_pct = None
+        try:
+            if bid_str:
+                b1 = bid_str.split("_")[0]
+                if b1 and b1 != "-":
+                    best_bid = float(b1)
+            if ask_str:
+                a1 = ask_str.split("_")[0]
+                if a1 and a1 != "-":
+                    best_ask = float(a1)
+            if best_bid and best_ask and best_bid > 0:
+                spread = round(best_ask - best_bid, 2)
+                spread_pct = round(spread / best_bid * 100, 2)
+        except (ValueError, IndexError):
+            pass
+
         # Calculate change
         change = None
         change_pct = None
@@ -85,6 +107,10 @@ def refresh_quotes():
             "time": time,
             "change": change,
             "change_pct": change_pct,
+            "bid": best_bid,
+            "ask": best_ask,
+            "spread": spread,
+            "spread_pct": spread_pct,
         }
 
     return jsonify(result)

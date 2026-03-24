@@ -526,12 +526,23 @@
                     const volStr = q.volume && q.volume !== '-' ? `<span class="quote-vol">量 ${q.volume}張</span>` : '';
                     const timeStr = q.time ? `<span class="quote-time">${q.time}</span>` : '';
 
+                    // Bid-ask spread
+                    let spreadStr = '';
+                    if (q.bid && q.ask) {
+                        spreadStr = `<span class="quote-spread">B${q.bid.toFixed(2)}/A${q.ask.toFixed(2)}`;
+                        if (q.spread_pct !== null) {
+                            spreadStr += ` <span class="quote-spread-pct">(${q.spread_pct.toFixed(2)}%)</span>`;
+                        }
+                        spreadStr += `</span>`;
+                    }
+
                     el.innerHTML = `
                         ${label}
                         <span class="quote-price ${colorClass}">${displayPrice.toFixed(2)}</span>
                         <span class="quote-change ${colorClass}">${changeStr}</span>
                         <span class="quote-pct ${colorClass}">${pctStr}</span>
                         ${volStr}
+                        ${spreadStr}
                         ${timeStr}
                     `;
                 }
