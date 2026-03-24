@@ -387,7 +387,12 @@
                 `;
 
                 if (hasWarrants) {
-                    dayHtml += `<div class="warrants-list">`;
+                    dayHtml += `
+                        <div class="warrants-toggle" onclick="toggleWarrants(this, event)">
+                            <span class="warrants-toggle-icon">&#9654;</span>
+                            <span>權證 ${s.warrants.length} 檔</span>
+                        </div>
+                        <div class="warrants-list" style="display:none">`;
                     for (const w of s.warrants) {
                         const ref = w.price || w.bid || w.ask;
                         const priceStr = ref ? ref.toFixed(2) + '元' : '---';
@@ -401,7 +406,6 @@
                         if (w.outstanding !== null && w.outstanding !== undefined) metrics.push(`流通 ${w.outstanding.toFixed(0)}%`);
 
                         const wScoreColor = scoreColor(w.score);
-                        // Escape name for JS onclick
                         const wNameSafe = w.name.replace(/'/g, "\\'");
 
                         dayHtml += `
@@ -425,6 +429,8 @@
                         `;
                     }
                     dayHtml += `</div>`;
+                } else {
+                    dayHtml += `<div class="warrants-toggle no-warrant-toggle"><span>無符合權證</span></div>`;
                 }
 
                 dayHtml += `</div>`;
@@ -465,6 +471,19 @@
     }
 
     let autoRefreshTimer = null;
+
+    function toggleWarrants(el, event) {
+        event.stopPropagation();
+        const list = el.nextElementSibling;
+        const icon = el.querySelector('.warrants-toggle-icon');
+        if (list.style.display === 'none') {
+            list.style.display = 'flex';
+            icon.classList.add('open');
+        } else {
+            list.style.display = 'none';
+            icon.classList.remove('open');
+        }
+    }
 
     async function refreshQuotes(silent) {
         if (!lastAnalysisData) return;
@@ -536,6 +555,15 @@
                         spreadStr += `</span>`;
                     }
 
+                    // Odd-lot diff
+                    let oddStr = '';
+                    if (q.odd_price) {
+                        const diffPct = q.odd_diff_pct;
+                        const diffClass = diffPct > 0 ? 'odd-premium' : diffPct < 0 ? 'odd-discount' : '';
+                        const diffSign = diffPct > 0 ? '+' : '';
+                        oddStr = `<span class="quote-odd ${diffClass}">零股${q.odd_price.toFixed(2)} (${diffSign}${diffPct !== null ? diffPct.toFixed(2) : '?'}%)</span>`;
+                    }
+
                     el.innerHTML = `
                         ${label}
                         <span class="quote-price ${colorClass}">${displayPrice.toFixed(2)}</span>
@@ -543,6 +571,7 @@
                         <span class="quote-pct ${colorClass}">${pctStr}</span>
                         ${volStr}
                         ${spreadStr}
+                        ${oddStr}
                         ${timeStr}
                     `;
                 }

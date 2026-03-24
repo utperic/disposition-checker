@@ -111,7 +111,31 @@ def refresh_quotes():
             "ask": best_ask,
             "spread": spread,
             "spread_pct": spread_pct,
+            "odd_price": None,
+            "odd_diff_pct": None,
         }
+
+    # Fetch odd-lot (盤中零股) quotes
+    try:
+        odd_url = f"https://mis.twse.com.tw/stock/api/getOddInfo.jsp?ex_ch={query}"
+        odd_resp = _session.get(odd_url, timeout=10)
+        odd_resp.raise_for_status()
+        odd_raw = odd_resp.json()
+        for item in odd_raw.get("msgArray", []):
+            code = item.get("c", "")
+            odd_z = item.get("z", "-")
+            if code in result and odd_z and odd_z != "-":
+                try:
+                    odd_p = float(odd_z)
+                    result[code]["odd_price"] = odd_p
+                    # Calculate diff vs regular price
+                    reg_p = float(result[code]["price"]) if result[code]["price"] != "-" else None
+                    if reg_p and reg_p > 0:
+                        result[code]["odd_diff_pct"] = round((odd_p - reg_p) / reg_p * 100, 2)
+                except (ValueError, TypeError):
+                    pass
+    except Exception:
+        pass  # Odd-lot data is optional
 
     return jsonify(result)
 
