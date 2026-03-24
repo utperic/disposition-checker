@@ -41,20 +41,27 @@ def refresh_quotes():
         prefix = "tse" if s.get("market") != "上櫃" else "otc"
         parts.append(f"{prefix}_{s['code']}.tw")
 
-    # TWSE mis API supports batch query (with retry for rate limiting)
+    # TWSE mis API needs session cookie — visit index page first if needed
     query = "|".join(parts)
     url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch={query}"
     raw = None
     for attempt in range(3):
         try:
+            if attempt > 0:
+                time.sleep(1)
             resp = _session.get(url, timeout=10)
             resp.raise_for_status()
+            # Check if we got HTML instead of JSON (missing session cookie)
+            ct = resp.headers.get("Content-Type", "")
+            if "html" in ct or resp.text.strip().startswith("<!"):
+                # Get session cookie by visiting index page
+                _session.get("https://mis.twse.com.tw/stock/index.jsp", timeout=10)
+                resp = _session.get(url, timeout=10)
+                resp.raise_for_status()
             raw = resp.json()
             break
         except Exception as e:
-            if attempt < 2:
-                time.sleep(1)
-            else:
+            if attempt >= 2:
                 return jsonify({"error": str(e)}), 500
 
     result = {}

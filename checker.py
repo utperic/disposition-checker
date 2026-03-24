@@ -535,6 +535,12 @@ def fetch_warrant_book_data(warrants_by_market):
                 url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch={query}"
                 resp = _session.get(url, timeout=10)
                 resp.raise_for_status()
+                # If HTML returned, get session cookie first
+                ct = resp.headers.get("Content-Type", "")
+                if "html" in ct or resp.text.strip().startswith("<!"):
+                    _session.get("https://mis.twse.com.tw/stock/index.jsp", timeout=10)
+                    resp = _session.get(url, timeout=10)
+                    resp.raise_for_status()
                 raw = resp.json()
                 for item in raw.get("msgArray", []):
                     code = item.get("c", "")
