@@ -389,10 +389,10 @@ def compute_warrant_score(w):
     else:
         score += 10
 
-    # 價差 (25分)
+    # 價差 (25分) — hard filter 已過濾 >5%, 0~5% 內評分
     spread = w.get("spread")
-    if spread is not None and spread < 100:
-        score += 25 * max(0, 1 - spread / 15)
+    if spread is not None and 0 < spread <= 5:
+        score += 25 * (1 - spread / 5)
     elif spread is None:
         score += 10
 
@@ -470,7 +470,7 @@ def fetch_warrants_for_stock(stock_code, min_days=120, max_outstanding=70, top_n
         }
         if w["bid"] is None and w["ask"] is None and w["price"] is None:
             continue
-        if w["spread"] is not None and (w["spread"] >= 100 or w["spread"] <= 0):
+        if w["spread"] is not None and (w["spread"] > 5 or w["spread"] <= 0):
             continue
         if w["spread"] is None:
             continue
@@ -488,6 +488,82 @@ def fetch_warrants_for_stock(stock_code, min_days=120, max_outstanding=70, top_n
 
     warrants.sort(key=lambda x: -x["score"])
     return warrants[:top_n]
+
+
+def _parse_book_vols(vol_str):
+    """解析五檔量字串 '100_50_30_20_10' → [100, 50, 30, 20, 10]"""
+    if not vol_str:
+        return []
+    vols = []
+    for v in vol_str.split("_"):
+        v = v.strip()
+        if v in ("", "-"):
+            continue
+        try:
+            vols.append(int(v))
+        except ValueError:
+            continue
+    return vols
+
+
+def fetch_warrant_book_data(warrants_by_market):
+    """
+    批次查詢權證五檔掛單量，判斷券商是否有在造市。
+    warrants_by_market: {"上市": [w1, w2, ...], "上櫃": [w3, ...]}
+
+    關鍵邏輯：掃描整個五檔，只要任一檔位掛單量 >= 20 張就視為券商在場。
+    - 券商在場 + 散戶掛更窄 → 最好的情況（有 backup liquidity）
+    - 券商在場 + 券商在最佳價 → 正常
+    - 券商不在場 → 危險，沒有流動性支撐
+    """
+    MM_THRESHOLD = 20  # 張，單一檔位掛單量門檻
+
+    result = {}
+
+    for market, warrants in warrants_by_market.items():
+        if not warrants:
+            continue
+        prefix = "tse" if market != "上櫃" else "otc"
+        codes = [w["code"] for w in warrants if w.get("code")]
+        if not codes:
+            continue
+
+        for i in range(0, len(codes), 20):
+            batch = codes[i:i+20]
+            query = "|".join(f"{prefix}_{c}.tw" for c in batch)
+            try:
+                url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch={query}"
+                resp = _session.get(url, timeout=10)
+                resp.raise_for_status()
+                raw = resp.json()
+                for item in raw.get("msgArray", []):
+                    code = item.get("c", "")
+                    if not code:
+                        continue
+
+                    bid_vols = _parse_book_vols(item.get("g", ""))
+                    ask_vols = _parse_book_vols(item.get("f", ""))
+
+                    # 五檔中最大掛單量
+                    max_bid = max(bid_vols) if bid_vols else 0
+                    max_ask = max(ask_vols) if ask_vols else 0
+                    bid1 = bid_vols[0] if bid_vols else 0
+                    ask1 = ask_vols[0] if ask_vols else 0
+
+                    # 券商是否在場（五檔中任一檔位 >= 門檻）
+                    mm_present = max_bid >= MM_THRESHOLD or max_ask >= MM_THRESHOLD
+
+                    result[code] = {
+                        "bid_vol": bid1,       # 最佳買價掛單量
+                        "ask_vol": ask1,       # 最佳賣價掛單量
+                        "max_bid_vol": max_bid,  # 五檔中最大買方掛單量
+                        "max_ask_vol": max_ask,  # 五檔中最大賣方掛單量
+                        "mm_present": mm_present,  # 券商是否在場
+                    }
+            except Exception:
+                continue
+
+    return result
 
 
 # ============================================================
@@ -698,7 +774,38 @@ def run_analysis(input_text, progress_cb=None):
         except Exception:
             warrant_cache[s["code"]] = []
 
+    # Fetch warrant 五檔 data for market maker detection
+    warrants_by_market = {"上市": [], "上櫃": []}
     code_to_entry = {s["code"]: s for s in stock_entries}
+    for s in stock_entries:
+        market = s.get("market", "上市")
+        for w in warrant_cache.get(s["code"], []):
+            w["_market"] = market
+            warrants_by_market.setdefault(market, []).append(w)
+
+    try:
+        book_data = fetch_warrant_book_data(warrants_by_market)
+    except Exception:
+        book_data = {}
+
+    # Enrich warrants with book data + penalize score if no market maker
+    for wlist in warrant_cache.values():
+        for w in wlist:
+            bd = book_data.get(w["code"], {})
+            w["bid_vol"] = bd.get("bid_vol")
+            w["ask_vol"] = bd.get("ask_vol")
+            w["max_bid_vol"] = bd.get("max_bid_vol")
+            w["max_ask_vol"] = bd.get("max_ask_vol")
+            w["mm_present"] = bd.get("mm_present")
+            w.pop("_market", None)
+
+            # 券商不在場 → 價差分數歸零（那個價差不可靠）
+            if w["mm_present"] is not None and not w["mm_present"]:
+                w["score"] = compute_warrant_score({**w, "spread": None})
+
+    # Re-sort warrants after score adjustment
+    for code, wlist in warrant_cache.items():
+        wlist.sort(key=lambda x: -x["score"])
 
     # Build output structure
     days = []

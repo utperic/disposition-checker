@@ -317,6 +317,7 @@
                 <span class="tag">認購</span>
                 <span class="tag">到期≥120天</span>
                 <span class="tag">價內5%~價外20%</span>
+                <span class="tag">價差≤5%</span>
                 <span class="tag">流通比≤70%</span>
                 <span class="tag">券商: ${data.issuers.join(', ')}</span>
             </div>
@@ -409,6 +410,18 @@
                         if (w.spread !== null && w.spread !== undefined) metrics.push(`價差 ${w.spread.toFixed(1)}%`);
                         if (w.outstanding !== null && w.outstanding !== undefined) metrics.push(`流通 ${w.outstanding.toFixed(0)}%`);
 
+                        // Market maker indicator
+                        let mmHtml = '';
+                        if (w.mm_present !== null && w.mm_present !== undefined) {
+                            if (w.mm_present) {
+                                // 券商在場 — 顯示最佳買價量 (可能是散戶更窄的價，也可能是券商自己)
+                                const volInfo = w.bid_vol !== null ? ` B${w.bid_vol}` : '';
+                                mmHtml = `<span class="mm-tag mm-yes" title="五檔中有券商造市（最大掛單${w.max_bid_vol}張），流動性有保障">造市${volInfo}張</span>`;
+                            } else {
+                                mmHtml = `<span class="mm-tag mm-no" title="五檔掛單量都很小（最大${w.max_bid_vol}張），券商可能未造市，價差不可靠">⚠無造市</span>`;
+                            }
+                        }
+
                         const wScoreColor = scoreColor(w.score);
                         const wNameSafe = w.name.replace(/'/g, "\\'");
 
@@ -427,6 +440,7 @@
                                     </div>
                                     <div class="warrant-metrics">
                                         ${metrics.map(m => `<span class="metric">${m}</span>`).join('')}
+                                        ${mmHtml}
                                     </div>
                                 </div>
                             </div>
