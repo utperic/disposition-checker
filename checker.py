@@ -553,29 +553,16 @@ def compute_stock_scores(stock_entries, sector_momentum, volume_data,
     min_momentum = min(momentum_values) if momentum_values else 0
     momentum_range = max_momentum - min_momentum if max_momentum != min_momentum else 1
 
-    volumes = []
     for s in stock_entries:
         vol = volume_data.get(s["code"])
         s["volume"] = vol
-        if vol is not None and vol > 0:
-            volumes.append(vol)
-
-    log_volumes = [math.log10(v) for v in volumes] if volumes else []
-    max_log_vol = max(log_volumes) if log_volumes else 1
-    min_log_vol = min(log_volumes) if log_volumes else 0
-    log_vol_range = max_log_vol - min_log_vol if max_log_vol != min_log_vol else 1
-
-    # 券資比正規化
-    sr_values = [short_ratio_data.get(s["code"], 0) for s in stock_entries]
-    max_sr = max(sr_values) if sr_values else 1
-    max_sr = max_sr if max_sr > 0 else 1
 
     for s in stock_entries:
         score = 0
         ind = s["industry"]
         is_disp = s.get("disp_info") is not None
 
-        # 族群密度 (35分)
+        # 族群熱度 (35分)
         if ind and ind in industry_counts:
             count = industry_counts[ind]
             score += 35 * (count / max_count)
@@ -589,17 +576,18 @@ def compute_stock_scores(stock_entries, sector_momentum, volume_data,
         else:
             score += CB_SECTOR_SCORE.get(ind, 10)
 
-        # 成交量 (30分)
+        # 成交量 (30分) — 絕對基準: log10 scale [4=1萬股, 8=1億股]
         vol = s.get("volume")
         if vol is not None and vol > 0:
             log_vol = math.log10(vol)
-            score += 30 * max(0, (log_vol - min_log_vol) / log_vol_range)
+            # 1萬股(log4)=0分, 1億股(log8)=滿分, 超過也30分
+            score += 30 * max(0, min(1, (log_vol - 4) / 4))
 
-        # 券資比 bonus (+15分) - 空頭越多，軋空潛力越大
+        # 券資比 bonus (+15分) — 絕對基準: 40%=滿分
         sr = short_ratio_data.get(s["code"], 0)
         s["short_ratio"] = sr
         if sr > 0:
-            score += 15 * min(1, sr / max_sr)
+            score += 15 * min(1, sr / 40)
 
         # 融資使用率扣分: >40% 開始扣，>60% 重扣 (最多扣15分)
         margin = margin_data.get(s["code"])
