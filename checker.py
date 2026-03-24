@@ -452,7 +452,9 @@ def fetch_warrants_for_stock(stock_code, min_days=120, max_outstanding=70, top_n
         }
         if w["bid"] is None and w["ask"] is None and w["price"] is None:
             continue
-        if w["spread"] is not None and w["spread"] >= 100:
+        if w["spread"] is not None and (w["spread"] >= 100 or w["spread"] <= 0):
+            continue
+        if w["spread"] is None:
             continue
         # 程式端 hard filter: 價內5%~價外20%
         in_out_str = w["in_out"]
