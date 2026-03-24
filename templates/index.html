@@ -250,9 +250,11 @@
             lastAnalysisData = data;
             setTimeout(() => {
                 renderResults(data);
-                // Auto-start quote refresh
-                refreshQuotes(false);
-                autoRefreshTimer = setInterval(() => refreshQuotes(true), 15000);
+                // Auto-start quote refresh (delay 3s to avoid TWSE rate limit after analysis)
+                setTimeout(() => {
+                    refreshQuotes(false);
+                    autoRefreshTimer = setInterval(() => refreshQuotes(true), 15000);
+                }, 3000);
             }, 300);
         } catch (err) {
             clearInterval(interval);

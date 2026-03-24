@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 import json
+import time
 import requests
 from checker import run_analysis, fetch_warrants_for_stock, _session
 
@@ -40,15 +41,21 @@ def refresh_quotes():
         prefix = "tse" if s.get("market") != "上櫃" else "otc"
         parts.append(f"{prefix}_{s['code']}.tw")
 
-    # TWSE mis API supports batch query
+    # TWSE mis API supports batch query (with retry for rate limiting)
     query = "|".join(parts)
-    try:
-        url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch={query}"
-        resp = _session.get(url, timeout=10)
-        resp.raise_for_status()
-        raw = resp.json()
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch={query}"
+    raw = None
+    for attempt in range(3):
+        try:
+            resp = _session.get(url, timeout=10)
+            resp.raise_for_status()
+            raw = resp.json()
+            break
+        except Exception as e:
+            if attempt < 2:
+                time.sleep(1)
+            else:
+                return jsonify({"error": str(e)}), 500
 
     result = {}
     for item in raw.get("msgArray", []):
