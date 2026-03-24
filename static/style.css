@@ -725,25 +725,6 @@ button#analyzeBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 .refresh-btn:active { opacity: 0.8; }
 .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.auto-refresh-btn {
-    padding: 10px 16px;
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text-dim);
-    border-radius: var(--radius-sm);
-    font-size: 0.85rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.auto-refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
-
-.auto-refresh-btn.active {
-    background: rgba(16, 185, 129, 0.15);
-    border-color: var(--green);
-    color: var(--green);
-}
 
 /* ============================================================
    Back Button
