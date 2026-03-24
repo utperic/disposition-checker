@@ -19,6 +19,12 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 _session = requests.Session()
 _session.verify = False
 
+# 啟動時預先取得 TWSE mis API session cookie（避免首次呼叫拿到 HTML）
+try:
+    _session.get("https://mis.twse.com.tw/stock/index.jsp", timeout=10)
+except Exception:
+    pass
+
 # ============================================================
 #  Constants
 # ============================================================
